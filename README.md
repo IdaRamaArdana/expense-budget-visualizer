@@ -52,3 +52,50 @@ expense-budget-visualizer/
 │   └── script.js
 │
 └── README.md
+```
+
+---
+
+## Installation / Run Locally
+- git clone https://github.com/yourusername/expense-budget-visualizer.git
+- cd expense-budget-visualizer
+
+Then open:
+- index.html
+
+Or use Live Server if preferred.
+
+## Deployment
+Hosted using GitHub Pages.
+To deploy:
+- git add .
+- git commit -m "deploy: update production build"
+- git push origin main
+- Then enable GitHub Pages in repository settings.
+
+## Design Goals
+Clean and intuitive UI/UX
+Mobile responsive layout
+Fast and lightweight performance
+No backend dependencies
+Production-style code organization
+
+
+## Browser Support
+> Chrome
+> Firefox
+> Edge
+> Safari
+
+
+## Future Improvements
+- Monthly analytics dashboard
+- Export / Import transaction data
+- Transaction editing support
+- PWA support
+- Advanced filtering/search
+
+
+
+Author
+DeadNetworky / Ida Bagus Kade Rama Ardana
