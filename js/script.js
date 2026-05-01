@@ -1,8 +1,10 @@
+// js/script.js
 const App = (() => {
-  const STORAGE_KEYS = {
+  const STORAGE = {
     TRANSACTIONS: "transactions",
     CATEGORIES: "categories",
-    THEME: "theme"
+    THEME: "theme",
+    LIMIT: "spendingLimit"
   };
 
   const DEFAULT_CATEGORIES = ["Food", "Transport", "Fun"];
@@ -12,12 +14,14 @@ const App = (() => {
     itemName: document.getElementById("itemName"),
     amount: document.getElementById("amount"),
     category: document.getElementById("category"),
-    transactionList: document.getElementById("transactionList"),
-    totalBalance: document.getElementById("totalBalance"),
-    sortSelect: document.getElementById("sortSelect"),
-    themeToggle: document.getElementById("themeToggle"),
     customCategory: document.getElementById("customCategory"),
     addCategoryBtn: document.getElementById("addCategoryBtn"),
+    transactionList: document.getElementById("transactionList"),
+    totalBalance: document.getElementById("totalBalance"),
+    spendingLimit: document.getElementById("spendingLimit"),
+    budgetProgress: document.getElementById("budgetProgress"),
+    budgetStatus: document.getElementById("budgetStatus"),
+    themeToggle: document.getElementById("themeToggle"),
     chartCanvas: document.getElementById("expenseChart")
   };
 
@@ -25,34 +29,40 @@ const App = (() => {
   let categories = [];
   let chart = null;
 
-  function safeLoad(key, fallback) {
+  const load = (key, fallback) => {
     try {
       return JSON.parse(localStorage.getItem(key)) ?? fallback;
     } catch {
       return fallback;
     }
-  }
+  };
 
-  function save(key, value) {
+  const save = (key, value) =>
     localStorage.setItem(key, JSON.stringify(value));
-  }
 
-  function formatCurrency(amount) {
-    return new Intl.NumberFormat("id-ID", {
+  const formatCurrency = amount =>
+    new Intl.NumberFormat("id-ID", {
       style: "currency",
       currency: "IDR",
       maximumFractionDigits: 0
     }).format(amount);
+
+  function getThemeIcon() {
+    const hour = new Date().getHours();
+    return hour >= 6 && hour < 18 ? "☀️" : "🌙";
+  }
+
+  function updateThemeIcon() {
+    DOM.themeToggle.textContent = getThemeIcon();
   }
 
   function renderCategories() {
-    DOM.category.innerHTML = `<option value="">Select Category</option>`;
+    DOM.category.innerHTML =
+      `<option value="">Select Category</option>`;
 
     categories.forEach(cat => {
-      const option = document.createElement("option");
-      option.value = cat;
-      option.textContent = cat;
-      DOM.category.appendChild(option);
+      DOM.category.innerHTML +=
+        `<option value="${cat}">${cat}</option>`;
     });
   }
 
@@ -60,90 +70,110 @@ const App = (() => {
     DOM.transactionList.innerHTML = "";
 
     if (!transactions.length) {
-      DOM.transactionList.innerHTML = `
-        <div class="empty-state">
-          No transactions yet. Start by adding one.
-        </div>
-      `;
-      updateTotal();
+      DOM.transactionList.innerHTML =
+        `<div class="empty-state">No transactions yet.</div>`;
+      updateSummary();
       updateChart();
       return;
     }
 
-    const sorted = [...transactions];
+    const limit =
+      Number(localStorage.getItem(STORAGE.LIMIT)) || Infinity;
 
-    switch (DOM.sortSelect.value) {
-      case "amountAsc":
-        sorted.sort((a, b) => a.amount - b.amount);
-        break;
+    transactions
+      .slice()
+      .reverse()
+      .forEach(tx => {
+        const item = document.createElement("div");
 
-      case "amountDesc":
-        sorted.sort((a, b) => b.amount - a.amount);
-        break;
+        item.className = "transaction-item";
 
-      case "category":
-        sorted.sort((a, b) => a.category.localeCompare(b.category));
-        break;
+        if (tx.amount > limit) {
+          item.classList.add("over-limit");
+        }
 
-      default:
-        sorted.sort((a, b) => b.createdAt - a.createdAt);
-    }
+        item.innerHTML = `
+          <div class="transaction-meta">
+            <strong>${tx.name}</strong>
+            <span>${formatCurrency(tx.amount)}</span>
+            <small>${tx.category}</small>
+          </div>
+          <button class="delete-btn" data-id="${tx.id}">
+            Delete
+          </button>
+        `;
 
-    sorted.forEach(tx => {
-      const item = document.createElement("div");
-      item.className = "transaction-item";
+        DOM.transactionList.appendChild(item);
+      });
 
-      item.innerHTML = `
-        <div class="transaction-info">
-          <strong>${tx.name}</strong>
-          <span>${formatCurrency(tx.amount)}</span>
-          <span class="transaction-category">${tx.category}</span>
-        </div>
-        <button class="delete-btn" data-id="${tx.id}">
-          Delete
-        </button>
-      `;
-
-      DOM.transactionList.appendChild(item);
-    });
-
-    updateTotal();
+    updateSummary();
     updateChart();
   }
 
-  function updateTotal() {
-    const total = transactions.reduce((sum, tx) => sum + tx.amount, 0);
+  function updateSummary() {
+    const total =
+      transactions.reduce((sum, tx) => sum + tx.amount, 0);
+
     DOM.totalBalance.textContent = formatCurrency(total);
+
+    const limit =
+      Number(localStorage.getItem(STORAGE.LIMIT));
+
+    if (!limit) {
+      DOM.budgetProgress.style.width = "0%";
+      DOM.budgetStatus.textContent = "No limit set";
+      return;
+    }
+
+    const percentage = Math.min((total / limit) * 100, 100);
+
+    DOM.budgetProgress.style.width = `${percentage}%`;
+
+    if (total > limit) {
+      DOM.budgetProgress.style.background = "var(--danger)";
+      DOM.budgetStatus.textContent =
+        `Over budget by ${formatCurrency(total - limit)}`;
+    } else {
+      DOM.budgetProgress.style.background = "var(--success)";
+      DOM.budgetStatus.textContent =
+        `${formatCurrency(limit - total)} remaining`;
+    }
   }
 
   function updateChart() {
-    const totals = {};
+    const grouped = {};
 
     transactions.forEach(tx => {
-      totals[tx.category] = (totals[tx.category] || 0) + tx.amount;
+      grouped[tx.category] =
+        (grouped[tx.category] || 0) + tx.amount;
     });
 
     if (chart) chart.destroy();
 
     chart = new Chart(DOM.chartCanvas, {
-      type: "pie",
+      type: "doughnut",
       data: {
-        labels: Object.keys(totals),
+        labels: Object.keys(grouped),
         datasets: [{
-          data: Object.values(totals),
+          data: Object.values(grouped),
           backgroundColor: [
-            "#3B82F6",
+            "#2563EB",
             "#10B981",
             "#F59E0B",
             "#EF4444",
-            "#8B5CF6",
-            "#EC4899"
+            "#8B5CF6"
           ]
         }]
       },
       options: {
         responsive: true,
-        maintainAspectRatio: true
+        maintainAspectRatio: false,
+        cutout: "60%",
+        plugins: {
+          legend: {
+            position: "bottom"
+          }
+        }
       }
     });
   }
@@ -161,14 +191,13 @@ const App = (() => {
     }
 
     transactions.push({
-      id: crypto.randomUUID(),
+      id: Date.now().toString(),
       name,
       amount,
-      category,
-      createdAt: Date.now()
+      category
     });
 
-    save(STORAGE_KEYS.TRANSACTIONS, transactions);
+    save(STORAGE.TRANSACTIONS, transactions);
 
     DOM.form.reset();
 
@@ -176,73 +205,93 @@ const App = (() => {
   }
 
   function deleteTransaction(e) {
-    if (!e.target.classList.contains("delete-btn")) return;
+    const btn = e.target.closest(".delete-btn");
+    if (!btn) return;
 
-    const confirmed = confirm("Delete this transaction?");
-    if (!confirmed) return;
+    transactions =
+      transactions.filter(tx => tx.id !== btn.dataset.id);
 
-    const id = e.target.dataset.id;
-
-    transactions = transactions.filter(tx => tx.id !== id);
-
-    save(STORAGE_KEYS.TRANSACTIONS, transactions);
+    save(STORAGE.TRANSACTIONS, transactions);
 
     renderTransactions();
   }
 
   function addCategory() {
-    const newCategory = DOM.customCategory.value.trim();
+    const newCategory =
+      DOM.customCategory.value.trim();
 
     if (!newCategory) return;
 
-    const exists = categories.some(
-      cat => cat.toLowerCase() === newCategory.toLowerCase()
-    );
-
-    if (exists) {
+    if (
+      categories.some(
+        cat =>
+          cat.toLowerCase() ===
+          newCategory.toLowerCase()
+      )
+    ) {
       alert("Category already exists.");
       return;
     }
 
     categories.push(newCategory);
 
-    save(STORAGE_KEYS.CATEGORIES, categories);
+    save(STORAGE.CATEGORIES, categories);
 
     DOM.customCategory.value = "";
 
     renderCategories();
   }
 
+  function updateLimit() {
+    const limit = Number(DOM.spendingLimit.value);
+
+    if (limit > 0) {
+      save(STORAGE.LIMIT, limit);
+    } else {
+      localStorage.removeItem(STORAGE.LIMIT);
+    }
+
+    renderTransactions();
+  }
+
   function toggleTheme() {
     document.body.classList.toggle("dark");
 
     localStorage.setItem(
-      STORAGE_KEYS.THEME,
-      document.body.classList.contains("dark") ? "dark" : "light"
+      STORAGE.THEME,
+      document.body.classList.contains("dark")
+        ? "dark"
+        : "light"
     );
+
+    updateThemeIcon();
   }
 
   function loadTheme() {
-    const theme = localStorage.getItem(STORAGE_KEYS.THEME);
-
-    if (theme === "dark") {
+    if (localStorage.getItem(STORAGE.THEME) === "dark") {
       document.body.classList.add("dark");
     }
+
+    updateThemeIcon();
   }
 
   function init() {
-    transactions = safeLoad(STORAGE_KEYS.TRANSACTIONS, []);
-    categories = safeLoad(STORAGE_KEYS.CATEGORIES, DEFAULT_CATEGORIES);
+    transactions = load(STORAGE.TRANSACTIONS, []);
+    categories = load(STORAGE.CATEGORIES, DEFAULT_CATEGORIES);
+
+    DOM.spendingLimit.value =
+      localStorage.getItem(STORAGE.LIMIT) || "";
 
     loadTheme();
+
     renderCategories();
     renderTransactions();
 
     DOM.form.addEventListener("submit", addTransaction);
     DOM.transactionList.addEventListener("click", deleteTransaction);
-    DOM.sortSelect.addEventListener("change", renderTransactions);
-    DOM.themeToggle.addEventListener("click", toggleTheme);
     DOM.addCategoryBtn.addEventListener("click", addCategory);
+    DOM.spendingLimit.addEventListener("input", updateLimit);
+    DOM.themeToggle.addEventListener("click", toggleTheme);
   }
 
   return { init };
